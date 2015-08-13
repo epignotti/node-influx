@@ -243,12 +243,21 @@ InfluxDB.prototype.dropUser = function (username, callback) {
   this.queryDB('drop user "' + username + '"', callback)
 }
 
-InfluxDB.prototype._createKeyValueString = function (object) {
+InfluxDB.prototype._createKeyValueString = function (object, forceFloat) {
   return _.map(object, function (value, key) {
     if (typeof value === 'string') {
       return key + '="' + value + '"'
     } else {
-      return key + '=' + value
+
+      if (forceFloat) {
+        var val = key + '=' + value;
+        if (val.indexOf(".") == -1) {
+          val += ".0";
+        }
+        return val;
+      } else {
+        return key + '=' + value
+      }
     }
   }).join(',')
 }
@@ -259,7 +268,7 @@ InfluxDB.prototype._createKeyTagString = function (object) {
   }).join(',')
 }
 
-InfluxDB.prototype._prepareValues = function (series) {
+InfluxDB.prototype._prepareValues = function (series, forceFloat) {
   var output = []
   _.forEach(series, function (values, seriesName) {
     _.each(values, function (points) {
@@ -274,7 +283,7 @@ InfluxDB.prototype._prepareValues = function (series) {
           timestamp = points[0].time
           delete (points[0].time)
         }
-        line += ' ' + this._createKeyValueString(points[0])
+        line += ' ' + this._createKeyValueString(points[0], forceFloat)
         if (timestamp) {
           if (timestamp instanceof Date) {
             line += ' ' + timestamp.getTime()
@@ -286,7 +295,15 @@ InfluxDB.prototype._prepareValues = function (series) {
         if (typeof points[0] === 'string') {
           line += ' value="' + points[0] + '"'
         } else {
-          line += ' value=' + points[0]
+          if (forceFloat) {
+            var val = ' value=' + points[0];
+            if (val.indexOf(".") == -1) {
+              val += ".0";
+            }
+            line += val;
+          } else {
+            line += ' value=' + points[0]
+          }
         }
       }
       output.push(line)
@@ -301,6 +318,8 @@ InfluxDB.prototype.writeSeries = function (series, options, callback) {
     options = {}
   }
 
+  var forceFloat = (options.forceFloat) ? true : false;
+
   if (!options.database) {
     options.database = this.options.database
   }
@@ -312,7 +331,7 @@ InfluxDB.prototype.writeSeries = function (series, options, callback) {
   this.request.post({
     url: this.url('write', options),
     pool: typeof options.pool !== 'undefined' ? options.pool : {},
-    body: this._prepareValues(series)
+    body: this._prepareValues(series, forceFloat)
   }, this._parseCallback(callback))
 }
 
